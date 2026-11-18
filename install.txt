@@ -1,0 +1,28 @@
+
+I've made the double-click setup files. They're in the project's setup folder, and you run them in order:
+
+┌─────┬─────────────────────┬──────────────────────────────────────────────────────────────────┬─────────────────────────────────────────────────────────┐
+│  #  │    Double-click     │                           What it does                           │                       What you do                       │
+├─────┼─────────────────────┼──────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+│ 1   │ 1-install-tools.bat │ Installs Node.js, Git, Tailscale and PM2, skipping anything      │ Click Yes on Windows prompts                            │
+│     │                     │ already installed                                                │                                                         │
+├─────┼─────────────────────┼──────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+│ 2   │ 2-setup-app.bat     │ Installs packages, creates .env with a new API key and port      │ Scan it: WhatsApp → Linked devices → Link a device      │
+│     │                     │ 3100, starts the app, opens the QR code in your browser          │                                                         │
+├─────┼─────────────────────┼──────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+│ 3   │ 3-public-url.bat    │ Signs in to Tailscale, turns on Funnel, shows your public URL    │ Ctrl+click the sign-in link; if Tailscale says Funnel   │
+│     │                     │                                                                  │ isn't enabled, open that link and click Enable          │
+├─────┼─────────────────────┼──────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+│ 4   │ 4-autostart.bat     │ Makes the app start when the laptop turns on, even before        │ Click Yes, then press Enter in the admin window when it │
+│     │                     │ sign-in, and turns off sleep (including when the lid closes)     │  finishes                                               │
+├─────┼─────────────────────┼──────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+│ 5   │ 5-check-status.bat  │ Checks that everything is running and changes nothing            │ Run it any time                                         │
+└─────┴─────────────────────┴──────────────────────────────────────────────────────────────────┴─────────────────────────────────────────────────────────┘
+
+The full guide is in setup\HOW-TO-SETUP.md. After step 3, your API key is in setup\API_KEY.txt and your public URL is in setup\PUBLIC_URL.txt. Running any file again is safe.
+
+What I tested: all the scripts load without errors in the PowerShell that Windows comes with. I ran 5-check-status.bat for real on this laptop and it correctly found the app online, WhatsApp linked and the public URL reachable. I didn't run steps 1–4 here, because they would restart your live app, so the first real run of those will be on the other laptop.
+
+Two things to know:
+- Nothing is committed or pushed yet. The other laptop can't get these files with git clone until they're pushed to GitHub. Until then, copy the project folder over, but leave out node_modules, .wwebjs_auth and .wwebjs_cache. Want me to commit and push?
+- This laptop doesn't start the app at power-on yet. Its current startup task waits until you sign in, and Windows shows it has never run. If you want this laptop to start the app at power-on as well, double-click 4-autostart.bat here too.

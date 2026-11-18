@@ -1,0 +1,8 @@
+node_modules/
+.wwebjs_auth/
+.wwebjs_cache/
+logs/
+setup/API_KEY.txt
+setup/PUBLIC_URL.txt
+setup-cmd/API_KEY.txt
+setup-cmd/PUBLIC_URL.txt
