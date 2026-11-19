@@ -1,130 +1,342 @@
-# WhatsApp API
+<div align="center">
 
-REST API for sending WhatsApp messages, built on [whatsapp-web.js](https://github.com/pedroslopez/whatsapp-web.js).
+# 💬 WhatsApp REST API
 
-**Features**
-- Send text and media (from a URL or base64), reply to a message, and send to groups
-- Check whether a number is on WhatsApp (results cached for 24 hours)
-- Sends one message at a time, with a gap and random jitter between messages to lower the risk of a ban
-- Reconnects automatically with exponential backoff, and a watchdog restarts the browser if it freezes
-- The session persists, so you scan the QR code only once
-- Webhooks for incoming messages and delivery or read receipts, signed with HMAC
-- API key auth (timing-safe), rate limiting, helmet, structured logs (pino), and graceful shutdown
+**A lightweight, self-hosted REST API for sending and receiving WhatsApp messages, built on [whatsapp-web.js](https://github.com/pedroslopez/whatsapp-web.js).**
 
-## Setup
+[![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![Express](https://img.shields.io/badge/Express.js-REST%20API-000000?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com/)
+[![whatsapp-web.js](https://img.shields.io/badge/whatsapp--web.js-Powered-25D366?style=for-the-badge&logo=whatsapp&logoColor=white)](https://wwebjs.dev/)
+[![PM2](https://img.shields.io/badge/PM2-Production%20Ready-2B037A?style=for-the-badge&logo=pm2&logoColor=white)](https://pm2.keymetrics.io/)
+
+[Features](#-features) • [Quick Start](#-quick-start) • [Authentication](#-authentication) • [API Reference](#-api-reference) • [Webhooks](#-webhooks) • [Production](#-production-deployment)
+
+</div>
+
+---
+
+## ✨ Features
+
+* **Rich Messaging Support:** Send plain text, images, videos, audio, and documents (via public URL or Base64), reply to specific messages, and message groups.
+* **Smart Number Validation:** Check whether a phone number is registered on WhatsApp before sending (results are cached for 24 hours to reduce overhead).
+* **Anti-Ban Message Queue:** Processes one message at a time with a configurable delay and random jitter between sends to mimic human behavior and reduce ban risk.
+* **Self-Healing Connection:** Automatically reconnects using exponential backoff on network drops, paired with a built-in watchdog that restarts the browser if it freezes.
+* **Persistent Session:** Saves your authentication state locally so you only scan the QR code once—even across server restarts.
+* **Real-Time Webhooks:** Receive instant HTTP `POST` notifications for incoming messages, read/delivery receipts, and session status changes, secured with HMAC-SHA256 signatures and automatic retries.
+* **Production Hardened:** Built-in timing-safe API key authentication, rate limiting, Helmet security headers, structured JSON logging (Pino) with automatic secret redaction, and graceful shutdown handling.
+
+---
+
+## 📁 Project Structure
+
+```text
+Whatsapp-API-Web-Integration/
+├── src/                    # Core Express server, WhatsApp client, queue & webhook handlers
+├── setup/                  # One-click Windows startup & Tailscale Funnel setup guides/scripts
+├── scripts/                # Utility and maintenance scripts
+├── ecosystem.config.js     # PM2 process manager configuration
+├── .env.example            # Environment variable template
+└── package.json            # Dependencies and npm scripts
+```
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+* **Node.js `v18.0.0` or higher**
+* **Google Chrome or Chromium** installed (or let Puppeteer use its bundled browser)
+* A smartphone with an active **WhatsApp** account
+
+### 1. Clone & Install
 
 ```bash
+git clone [https://github.com/farmanullah1/Whatsapp-API-Web-Integration.git](https://github.com/farmanullah1/Whatsapp-API-Web-Integration.git)
+cd Whatsapp-API-Web-Integration
 npm install
-cp .env.example .env      # then set API_KEY (a key is already generated if .env exists)
-npm start                 # production
-npm run dev               # auto-reload on changes
 ```
 
-On first start, a QR code prints in the terminal. Scan it with **WhatsApp → Linked devices → Link a device**.
-You can also download it as an image:
+### 2. Configure Environment Variables
+
+Copy the example environment file and set your `API_KEY`:
+
+**Windows (PowerShell):**
+```powershell
+Copy-Item .env.example .env
+```
+
+**Linux / macOS (Bash):**
+```bash
+cp .env.example .env
+```
+
+Open `.env` and customize your settings (see [Configuration](#-configuration) below).
+
+### 3. Start the Server
 
 ```bash
-curl -H "x-api-key: $API_KEY" http://localhost:3000/api/session/qr -o qr.png
+# Production mode
+npm start
+
+# Development mode (auto-restarts on file changes)
+npm run dev
 ```
 
-To run it on a Windows laptop that starts the API at power-on and serves it publicly through Tailscale Funnel, double-click the numbered files in [`setup/`](setup/HOW-TO-SETUP.md).
+### 4. Link Your WhatsApp Account
 
-## Authentication
+When the server starts for the first time, a **QR code** will appear in your terminal:
 
-Send `x-api-key: <API_KEY>` or `Authorization: Bearer <API_KEY>` on every `/api/*` request.
+1. Open **WhatsApp** on your phone.
+2. Go to **Settings** (or **⋮**) → **Linked Devices** → **Link a Device**.
+3. Scan the QR code displayed in your terminal.
 
-For quick checks from a browser, you can pass the key as a query parameter instead, for example `/api/session/status?api_key=<API_KEY>`.
-Prefer the headers for anything automated: URLs end up in browser history and proxy logs. The app redacts the key from its own logs.
+> [!TIP]
+> **Running headlessly?** You can also download the QR code as a PNG image from the API:
+> ```bash
+> curl -H "x-api-key: YOUR_API_KEY" http://localhost:3000/api/session/qr -o qr.png
+> ```
 
-## Endpoints
+### 💻 Windows Auto-Start & Public Tunnel (Optional)
+Want to run this API on a Windows laptop so it launches automatically at power-on and exposes a public HTTPS URL via **Tailscale Funnel**? Follow the step-by-step guide in [`setup/HOW-TO-SETUP.md`](setup/HOW-TO-SETUP.md) and run the numbered files in the `setup/` folder.
 
-| Method | Path | Description |
-|---|---|---|
-| GET  | `/health` | Public probe: returns 200 when ready, 503 otherwise |
-| GET  | `/api/session/status` | Connection state, linked number, queue size |
-| GET  | `/api/session/qr` | QR code as PNG (`?format=json` returns a data URL) |
-| POST | `/api/session/restart` | Restart the browser session |
-| POST | `/api/session/logout` | Unlink the device and generate a new QR code |
-| GET  | `/api/numbers/:number` | Check whether a number is on WhatsApp |
-| POST | `/api/messages/text` | Send a text message |
-| POST | `/api/messages/media` | Send an image, video, audio, or document |
+---
 
-### Send text
+## ⚙️ Configuration
+
+Edit your `.env` file to match your environment:
+
+| Variable | Description | Example |
+| :--- | :--- | :--- |
+| `PORT` | Port the HTTP server listens on | `3000` |
+| `API_KEY` | Secret key required to authorize `/api/*` requests | `your-strong-random-key` |
+| `DEFAULT_COUNTRY_CODE` | Country code prepended when local numbers (e.g., `0300...`) are passed | `92` |
+| `SEND_DELAY_MS` | Base delay (in milliseconds) between queued outgoing messages | `1500` |
+| `WEBHOOK_URL` | Public URL where incoming message and status events are sent | `https://yourapp.com/webhook` |
+| `WEBHOOK_SECRET` | Secret key used to sign webhook payloads (`x-signature`) | `whsec_your_secret` |
+| `CHROME_PATH` | Optional custom path to an installed Chrome/Chromium executable | `/usr/bin/google-chrome` |
+
+---
+
+## 🔐 Authentication
+
+All `/api/*` routes require your `API_KEY`. You can provide it in three ways:
+
+1. **`x-api-key` Header (Recommended):**
+   ```http
+   x-api-key: YOUR_API_KEY
+   ```
+2. **`Authorization` Bearer Header:**
+   ```http
+   Authorization: Bearer YOUR_API_KEY
+   ```
+3. **Query Parameter (For quick browser testing only):**
+   ```text
+   http://localhost:3000/api/session/status?api_key=YOUR_API_KEY
+   ```
+
+> [!NOTE]
+> Always use HTTP headers in production scripts and apps. Query parameters can be saved in browser history and reverse-proxy access logs. The server automatically redacts your key from its own Pino logs.
+
+---
+
+## 📡 API Reference
+
+### Endpoints Overview
+
+| Method | Endpoint | Auth | Description |
+| :--- | :--- | :---: | :--- |
+| `GET` | `/health` | Public | Health check (`200` when ready, `503` if disconnected) |
+| `GET` | `/api/session/status` | Required | Returns connection state, linked phone number, and queue size |
+| `GET` | `/api/session/qr` | Required | Returns the login QR code as a PNG (`?format=json` for Data URL) |
+| `POST` | `/api/session/restart` | Required | Restarts the underlying WhatsApp Web browser session |
+| `POST` | `/api/session/logout` | Required | Unlinks the current device and generates a fresh QR code |
+| `GET` | `/api/numbers/:number` | Required | Checks if a phone number has an active WhatsApp account |
+| `POST` | `/api/messages/text` | Required | Queues and sends a text message (or reply) |
+| `POST` | `/api/messages/media` | Required | Queues and sends an image, video, audio, or document |
+
+---
+
+### 1. Check Session Status
+
+```bash
+curl -H "x-api-key: YOUR_API_KEY" http://localhost:3000/api/session/status
+```
+
+---
+
+### 2. Verify a WhatsApp Number
+
+Checks if a number is registered on WhatsApp (cached for 24 hours):
+
+```bash
+curl -H "x-api-key: YOUR_API_KEY" http://localhost:3000/api/numbers/923001234567
+```
+
+---
+
+### 3. Send a Text Message
 
 ```bash
 curl -X POST http://localhost:3000/api/messages/text \
-  -H "x-api-key: $API_KEY" -H "content-type: application/json" \
-  -d '{"to": "923001234567", "message": "Hello from the API 🚀"}'
+  -H "x-api-key: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "923001234567",
+    "message": "Hello from the WhatsApp API 🚀"
+  }'
 ```
 
+**Success Response (`200` / `201`):**
 ```json
-{ "success": true, "data": { "id": "true_923001234567@c.us_3EB0...", "to": "923001234567@c.us", "timestamp": 1760375000 } }
+{
+  "success": true,
+  "data": {
+    "id": "true_923001234567@c.us_3EB0...",
+    "to": "923001234567@c.us",
+    "timestamp": 1760375000
+  }
+}
 ```
 
-`to` accepts `923001234567`, `+92 300 1234567`, `0092...`, or `03001234567` (when `DEFAULT_COUNTRY_CODE=92`).
-It also accepts a raw chat ID such as `120363...@g.us` for groups. Optional field: `quotedMessageId`, to reply to a message.
+#### Request Body Fields
+| Field | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `to` | `string` | Yes | Accepts `923001234567`, `+92 300 1234567`, `0092...`, or local `03001234567` (when `DEFAULT_COUNTRY_CODE=92`). Also accepts group IDs like `120363...@g.us`. |
+| `message` | `string` | Yes | The text content to send. |
+| `quotedMessageId` | `string` | No | Message ID to quote/reply to directly. |
 
-### Send media
+---
 
+### 4. Send Media (Image, Video, Audio, Document)
+
+#### Option A: Send from a Public URL
 ```bash
-# from URL
 curl -X POST http://localhost:3000/api/messages/media \
-  -H "x-api-key: $API_KEY" -H "content-type: application/json" \
-  -d '{"to": "923001234567", "url": "https://example.com/invoice.pdf", "caption": "Your invoice", "asDocument": true}'
-
-# from base64
--d '{"to": "923001234567", "base64": "<data>", "mimetype": "image/png", "filename": "photo.png", "caption": "Hi"}'
+  -H "x-api-key: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "923001234567",
+    "url": "[https://example.com/invoice.pdf](https://example.com/invoice.pdf)",
+    "caption": "Here is your invoice 📄",
+    "asDocument": true
+  }'
 ```
 
-### Errors
+#### Option B: Send from Base64
+```bash
+curl -X POST http://localhost:3000/api/messages/media \
+  -H "x-api-key: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "923001234567",
+    "base64": "<BASE64_ENCODED_DATA>",
+    "mimetype": "image/png",
+    "filename": "photo.png",
+    "caption": "Sent via Base64"
+  }'
+```
 
-Every error uses the same shape:
+---
+
+### 5. Error Responses
+
+All errors follow a consistent JSON structure:
 
 ```json
-{ "success": false, "error": { "code": "NOT_ON_WHATSAPP", "message": "923001234567 is not registered on WhatsApp." } }
+{
+  "success": false,
+  "error": {
+    "code": "NOT_ON_WHATSAPP",
+    "message": "923001234567 is not registered on WhatsApp."
+  }
+}
 ```
 
-| Code | HTTP | Meaning |
-|---|---|---|
-| `VALIDATION_ERROR`, `INVALID_NUMBER`, `INVALID_JSON` | 400 | Bad input |
-| `UNAUTHORIZED` | 401 | Missing or invalid API key |
-| `NOT_ON_WHATSAPP` | 404 | The number has no WhatsApp account |
-| `MEDIA_DOWNLOAD_FAILED` | 422 | Could not fetch the media URL |
-| `RATE_LIMITED`, `QUEUE_FULL` | 429 | Slow down and retry |
-| `NOT_READY` | 503 | Session not connected; check `/api/session/status` |
-| `SEND_UNCONFIRMED` | 502 | WhatsApp did not confirm the send; check the chat before retrying |
-| `TIMEOUT` | 504 | WhatsApp did not respond in time |
+| Error Code | HTTP Status | Meaning |
+| :--- | :---: | :--- |
+| `VALIDATION_ERROR`, `INVALID_NUMBER`, `INVALID_JSON` | `400` | Invalid request payload or malformed phone number |
+| `UNAUTHORIZED` | `401` | Missing or invalid `API_KEY` |
+| `NOT_ON_WHATSAPP` | `404` | The target phone number does not have a WhatsApp account |
+| `MEDIA_DOWNLOAD_FAILED` | `422` | Could not download the file from the provided `url` |
+| `RATE_LIMITED`, `QUEUE_FULL` | `429` | Too many requests or outgoing queue is full; retry later |
+| `SEND_UNCONFIRMED` | `502` | WhatsApp did not confirm delivery; verify chat before retrying |
+| `NOT_READY` | `503` | WhatsApp session is disconnected; check `/api/session/status` |
+| `TIMEOUT` | `504` | WhatsApp Web did not respond within the timeout window |
 
-## Webhooks
+---
 
-Set `WEBHOOK_URL` to receive a `POST` for each of these events:
+## 🔔 Webhooks
+
+Set `WEBHOOK_URL` in your `.env` file to receive real-time HTTP `POST` events whenever activity occurs on your account.
+
+### Supported Events
+
+| Event Name | Triggered When |
+| :--- | :--- |
+| `message.received` | A new incoming message arrives (direct chat or group) |
+| `message.ack` | An outgoing message status updates (`sent`, `delivered`, `read`, or `played`) |
+| `session.ready` | WhatsApp Web connects and is ready to send/receive |
+| `session.disconnected` | The WhatsApp Web session disconnects |
+
+### Sample Webhook Payload
 
 ```json
-{ "event": "message.received", "data": { "id": "...", "from": "923001234567@c.us", "body": "Hi", "type": "chat", "isGroup": false }, "timestamp": 1760375000000 }
+{
+  "event": "message.received",
+  "data": {
+    "id": "false_923001234567@c.us_3EB0...",
+    "from": "923001234567@c.us",
+    "body": "Hi there!",
+    "type": "chat",
+    "isGroup": false
+  },
+  "timestamp": 1760375000000
+}
 ```
 
-Events: `message.received`, `message.ack` (`sent` / `delivered` / `read` / `played`), `session.ready`, `session.disconnected`.
-Failed deliveries are retried up to 4 times with backoff on 5xx, 429, and network errors.
-If `WEBHOOK_SECRET` is set, verify the `x-signature: sha256=<hmac>` header:
+> **Automatic Retries:** If your webhook endpoint returns a `5xx`, `429`, or encounters a network error, the API automatically retries delivery up to **4 times** with exponential backoff.
 
-```js
-const expected = 'sha256=' + crypto.createHmac('sha256', SECRET).update(rawBody).digest('hex');
+### Verifying Webhook Signatures (Security)
+
+If `WEBHOOK_SECRET` is configured, every webhook request includes an `x-signature` header (`sha256=<hmac>`). Verify it against the raw request body before processing:
+
+```javascript
+const crypto = require('crypto');
+
+function isValidSignature(rawBody, signatureHeader, secret) {
+  const expected = 'sha256=' + crypto
+    .createHmac('sha256', secret)
+    .update(rawBody)
+    .digest('hex');
+
+  return crypto.timingSafeEqual(
+    Buffer.from(signatureHeader),
+    Buffer.from(expected)
+  );
+}
 ```
 
-## Production
+---
+
+## 🏭 Production Deployment
+
+Use **PM2** to keep the API running in the background and automatically restart it on crashes or server reboots:
 
 ```bash
-npm i -g pm2
+npm install -g pm2
 pm2 start ecosystem.config.js
 pm2 save && pm2 startup
 ```
 
-- Run **one process per WhatsApp number**. Do not use cluster mode, because a session cannot be shared.
-- Put the API behind HTTPS (nginx or Caddy), and keep `.env` and `.wwebjs_auth/` private. The session folder gives full access to the account.
-- On Linux servers, Chromium needs its system libraries. Alternatively, set `CHROME_PATH` to an installed Chrome.
+### Production Best Practices
+* **Single Instance Only:** Always run **one process per WhatsApp number**. Never enable PM2 cluster mode—WhatsApp Web sessions cannot be shared across multiple processes.
+* **Use HTTPS:** Place the API behind a reverse proxy such as **Nginx**, **Caddy**, or **Tailscale Funnel** so your `API_KEY` is encrypted in transit.
+* **Protect Session Data:** Keep `.env` and `.wwebjs_auth/` strictly private and excluded from version control. Anyone with access to `.wwebjs_auth/` has full access to your WhatsApp account.
+* **Linux Server Dependencies:** On minimal Linux distributions (Ubuntu/Debian), install Chromium's required shared libraries or point `CHROME_PATH` to an existing Chrome installation.
 
-## Important
+---
 
-whatsapp-web.js is an **unofficial** client that automates WhatsApp Web. WhatsApp may ban numbers used for bulk or unsolicited messaging.
-Keep `SEND_DELAY_MS` reasonable, and message only people who expect to hear from you.
-For high-volume or business-critical messaging, use the official [WhatsApp Business Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api).
+> [!WARNING]
+> **Unofficial Client Notice:** `whatsapp-web.js` automates WhatsApp Web and is **not** affiliated with or endorsed by WhatsApp. WhatsApp actively bans accounts used for spam, bulk messaging, or unsolicited outreach. Keep `SEND_DELAY_MS` at a safe interval and only message recipients who expect to hear from you.
+>
+> For high-volume or mission-critical business messaging, use the official **[WhatsApp Business Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api)**.
